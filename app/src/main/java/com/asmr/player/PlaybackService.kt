@@ -26,6 +26,8 @@ class PlaybackService : MediaSessionService() {
     companion object {
         const val OVERLAY_COMMAND = "com.asmr.player.OVERLAY"
         val overlayVisible = MutableStateFlow(false)
+        val overlayLocked = MutableStateFlow(false)
+        val overlayTransparent = MutableStateFlow(false)
         const val TIMER_COMMAND = "com.asmr.player.SLEEP_TIMER"
         val sleepDeadline = MutableStateFlow(0L)
         val playbackError = MutableStateFlow<String?>(null)

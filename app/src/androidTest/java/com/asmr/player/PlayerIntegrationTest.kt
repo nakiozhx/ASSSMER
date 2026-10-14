@@ -162,4 +162,63 @@ class PlayerIntegrationTest {
         } finally {assertTrue(android.provider.DocumentsContract.deleteDocument(context.contentResolver,target))}
         assertEquals(false,store.exists(target.toString()))
     }
+    @Test @androidx.test.filters.SdkSuppress(minSdkVersion=30)
+    fun i_floatingLyricsHasFixedSizeLockAndTransparentBackground() {
+        val store=LibraryStore(context)
+        val locked=store.setting("overlayLocked","false")
+        val transparent=store.setting("overlayTransparent","false")
+        val track=store.load().tracks.first {it.folder=="RJ10/A"&&it.name=="1.wav"}
+        var overlay: FloatingLyrics? = null
+        fun root(): android.view.View? = android.view.inspector.WindowInspector.getGlobalWindowViews().firstOrNull { view ->
+            fun hasLock(v: android.view.View): Boolean = v.contentDescription?.toString()?.contains("悬浮字幕位置")==true ||
+                (v is android.view.ViewGroup && (0 until v.childCount).any {hasLock(v.getChildAt(it))})
+            hasLock(view)
+        }
+        fun text(view: android.view.View): List<String> = if(view is android.widget.TextView) listOf(view.text.toString())
+            else if(view is android.view.ViewGroup) (0 until view.childCount).flatMap {text(view.getChildAt(it))} else emptyList()
+        try {
+            main {
+                controller.setMediaItem(track.mediaItem());controller.prepare();controller.seekTo(1500)
+                val display=context.getSystemService(android.hardware.display.DisplayManager::class.java).getDisplay(android.view.Display.DEFAULT_DISPLAY)
+                val wc=context.createDisplayContext(display).createWindowContext(android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,null)
+                overlay=FloatingLyrics(wc,controller);overlay!!.enable(true)
+            }
+            await {controller.duration==12000L && root()!=null}
+            main {overlay!!.update()}
+            await {overlay!!.update();text(root()!!).contains("这是第一段测试音频")}
+            var width=0;var height=0
+            main {width=root()!!.width;height=root()!!.height;assertTrue(width>0 && height>0)}
+            main {controller.seekTo(2850);overlay!!.update();controller.play()}
+            await {
+                overlay!!.update()
+                val host=(root() as android.widget.LinearLayout).getChildAt(1) as android.widget.FrameLayout
+                host.getChildAt(0).translationY<0
+            }
+            main {controller.pause();controller.seekTo(8500);overlay!!.update()}
+            await {overlay!!.update();text(root()!!).contains("点击文字可以跳转")}
+            main {assertEquals(width,root()!!.width);assertEquals(height,root()!!.height)}
+            main {
+                store.setSetting("overlayTransparent","true");PlaybackService.overlayTransparent.value=true;overlay!!.update()
+                assertNull(root()!!.background)
+                PlaybackService.overlayTransparent.value=false;overlay!!.update();assertNotNull(root()!!.background)
+            }
+            fun drag() {
+                val view=root()!!;val now=android.os.SystemClock.uptimeMillis()
+                val y=context.resources.displayMetrics.density*70
+                listOf(android.view.MotionEvent.ACTION_DOWN to y,android.view.MotionEvent.ACTION_MOVE to y+100,android.view.MotionEvent.ACTION_UP to y+100).forEachIndexed {index,pair ->
+                    val event=android.view.MotionEvent.obtain(now,now+index*20L,pair.first,80f,pair.second,0)
+                    view.dispatchTouchEvent(event);event.recycle()
+                }
+            }
+            var before=0
+            main {PlaybackService.overlayLocked.value=true;overlay!!.update();before=(root()!!.layoutParams as android.view.WindowManager.LayoutParams).y;drag()
+                assertEquals(before,(root()!!.layoutParams as android.view.WindowManager.LayoutParams).y)}
+            main {PlaybackService.overlayLocked.value=false;overlay!!.update();drag()
+                assertTrue((root()!!.layoutParams as android.view.WindowManager.LayoutParams).y>before)}
+        } finally {
+            main {overlay?.destroy()}
+            store.setSetting("overlayLocked",locked);store.setSetting("overlayTransparent",transparent)
+            PlaybackService.overlayLocked.value=locked.toBoolean();PlaybackService.overlayTransparent.value=transparent.toBoolean()
+        }
+    }
 }
