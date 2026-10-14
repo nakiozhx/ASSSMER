@@ -521,7 +521,7 @@ private fun SettingsScreen(vm: PlayerViewModel, onImport: () -> Unit) {
         Text("阅读",color=Green,fontSize=13.sp)
         Text("字幕字号：${vm.fontSize.toInt()}",modifier=Modifier.padding(top=12.dp),fontSize=14.sp)
         Slider(value=vm.fontSize,onValueChange={vm.font(it)},valueRange=14f..32f,steps=17)
-        Spacer(Modifier.height(22.dp));Text("ASSSMER  /  0.3.0",color=Muted,fontSize=11.sp)
+        Spacer(Modifier.height(22.dp));Text("ASSSMER  /  0.3.1",color=Muted,fontSize=11.sp)
     }
     remove?.let { root -> AlertDialog(onDismissRequest={remove=null},title={Text("移除音频目录？")},text={Text("只移除音频库中的记录，原音频和字幕文件会保留。")},
         confirmButton={TextButton(onClick={vm.removeRoot(root);remove=null}){Text("移除")}},dismissButton={TextButton(onClick={remove=null}){Text("取消")}}) }

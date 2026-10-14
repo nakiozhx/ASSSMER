@@ -26,4 +26,23 @@ class FloatingFramesTest {
     @Test fun noCuesGivesEmptyFrame() {
         assertEquals(FloatingFrame(-1,"","",""),FloatingFrames.at(SubtitleDocument(emptyList(),"",emptyList()),0))
     }
+    @Test fun removesIndentationBlankLinesAndCjkPadding() {
+        assertEquals("你好，世界。下一句",FloatingText.compact("  你 好，\t 世界。\n\n　 下一句  "))
+        assertEquals("こんにちは世界",FloatingText.compact("こんにちは　 世界"))
+    }
+    @Test fun keepsEnglishWordBoundariesAndMixedText() {
+        assertEquals("Good night my friend",FloatingText.compact("  Good\t night\n\nmy   friend  "))
+        assertEquals("请听 ASMR test 10",FloatingText.compact("请听　 ASMR   test  10"))
+    }
+    @Test fun cleansAllThreeRowsWithoutChangingDocumentOrTiming() {
+        val source=SubtitleDocument(listOf(Cue(1000,2000,"　 上 一句 "),Cue(2000,3000,"当前\n\n  句"),Cue(3000,4000," Next   line ")),"",emptyList())
+        assertEquals(FloatingFrame(1,"上一句","当前句","Next line"),FloatingFrames.at(source,2500))
+        assertEquals("当前\n\n  句",source.cues[1].text)
+        assertEquals(2000L,source.cues[1].startMs)
+        assertEquals(FloatingFrame(-1,"","","上一句"),FloatingFrames.at(source,500))
+    }
+    @Test fun unicodeWhitespaceDoesNotLeaveInvisiblePadding() {
+        assertEquals("Hello world",FloatingText.compact("\uFEFFHello\u00A0\u200Bworld　"))
+        assertEquals("",FloatingText.compact(" 　\n\t"))
+    }
 }
