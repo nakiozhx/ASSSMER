@@ -165,6 +165,8 @@ class PlayerIntegrationTest {
     @Test @androidx.test.filters.SdkSuppress(minSdkVersion=30)
     fun i_floatingLyricsHasFixedSizeLockAndTransparentBackground() {
         val store=LibraryStore(context)
+        val originalFont=store.fontSize()
+        store.setFontSize(14f)
         val locked=store.setting("overlayLocked","false")
         val transparent=store.setting("overlayTransparent","false")
         val track=store.load().tracks.first {it.folder=="RJ10/A"&&it.name=="1.wav"}
@@ -187,7 +189,8 @@ class PlayerIntegrationTest {
             main {overlay!!.update()}
             await {overlay!!.update();text(root()!!).contains("这是第一段测试音频")}
             var width=0;var height=0
-            main {width=root()!!.width;height=root()!!.height;assertTrue(width>0 && height>0)}
+            main {width=root()!!.width;height=root()!!.height;assertTrue(width>0 && height>0)
+                assertTrue("Small text must use a compact frame",height < context.resources.displayMetrics.density*200)}
             main {controller.seekTo(2850);overlay!!.update();controller.play()}
             await {
                 overlay!!.update()
@@ -217,6 +220,7 @@ class PlayerIntegrationTest {
                 assertTrue((root()!!.layoutParams as android.view.WindowManager.LayoutParams).y>before)}
         } finally {
             main {overlay?.destroy()}
+            store.setFontSize(originalFont)
             store.setSetting("overlayLocked",locked);store.setSetting("overlayTransparent",transparent)
             PlaybackService.overlayLocked.value=locked.toBoolean();PlaybackService.overlayTransparent.value=transparent.toBoolean()
         }

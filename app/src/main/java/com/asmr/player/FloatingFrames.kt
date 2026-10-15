@@ -1,19 +1,25 @@
 package com.asmr.player
 
-data class FloatingFrame(val index: Int, val previous: String, val current: String, val next: String)
+data class FloatingFrame(val index: Int, val previous: String, val current: String, val next: String, val active: Boolean = true)
+
+class FloatingTimeline(document: SubtitleDocument) {
+    private val cues = document.cues.map { it to FloatingText.compact(it.text) }.filter { it.second.isNotEmpty() }
+    fun at(position: Long): FloatingFrame {
+        if(cues.isEmpty()) return FloatingFrame(-1,"","", "")
+        val active = cues.indices.filter { position >= cues[it].first.startMs && position < (cues[it].first.endMs ?: Long.MAX_VALUE) }
+        // Keep the most recent sentence centered during a timestamp gap. Upcoming text
+        // remains a preview and is only highlighted once its actual start time arrives.
+        val index = active.firstOrNull() ?: cues.indexOfLast { it.first.startMs <= position }.coerceAtLeast(0)
+        return FloatingFrame(index,
+            cues.getOrNull(index - 1)?.second.orEmpty(),
+            if(active.isEmpty()) cues[index].second else active.joinToString("\n") { cues[it].second },
+            cues.getOrNull((active.lastOrNull() ?: index) + 1)?.second.orEmpty(),
+            active.isNotEmpty())
+    }
+}
 
 object FloatingFrames {
-    fun at(document: SubtitleDocument, position: Long): FloatingFrame {
-        val cues = document.cues
-        val active = document.at(position)
-        val index = active.firstOrNull()
-        if (index != null) return FloatingFrame(index,
-            FloatingText.compact(cues.getOrNull(index - 1)?.text.orEmpty()),
-            active.joinToString("\n") { FloatingText.compact(cues[it].text) },
-            FloatingText.compact(cues.getOrNull(active.last() + 1)?.text.orEmpty()))
-        val upcoming = cues.indexOfFirst { it.startMs > position }.let { if (it < 0) cues.size else it }
-        return FloatingFrame(-1, FloatingText.compact(cues.getOrNull(upcoming - 1)?.text.orEmpty()), "", FloatingText.compact(cues.getOrNull(upcoming)?.text.orEmpty()))
-    }
+    fun at(document: SubtitleDocument, position: Long) = FloatingTimeline(document).at(position)
 }
 
 /** Display-only cleanup: retain the source document and its timing exactly as imported. */

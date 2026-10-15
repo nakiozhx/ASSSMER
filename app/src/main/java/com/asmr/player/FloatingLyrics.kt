@@ -31,6 +31,7 @@ class FloatingLyrics(private val context: Context, private val player: Player) {
     private var lockButton: TextView? = null
     private var closeButton: TextView? = null
     private var document: SubtitleDocument? = null
+    private var timeline: FloatingTimeline? = null
     private var loadedKey = ""
     private var enabled = false
     private var frame: FloatingFrame? = null
@@ -38,9 +39,9 @@ class FloatingLyrics(private val context: Context, private val player: Player) {
     private var lastPosition = -1L
     private val dp = context.resources.displayMetrics.density
     private fun px(value: Int) = (value * dp).toInt()
-    private val rowHeight get() = px(80)
+    private val rowHeight get() = px((store.fontSize() * 2.5f + 8).toInt().coerceIn(42, 88))
     private val params = WindowManager.LayoutParams(
-        minOf(px(360), context.resources.displayMetrics.widthPixels - px(24)), px(288),
+        minOf(px(360), context.resources.displayMetrics.widthPixels - px(24)), px(48) + rowHeight * 3,
         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
         PixelFormat.TRANSLUCENT
@@ -107,16 +108,16 @@ class FloatingLyrics(private val context: Context, private val player: Player) {
         val duration = player.duration.takeIf { it > 0 } ?: 0
         val key = "$id|$selected|$duration"
         if (key != loadedKey) {
-            loadedKey = key; document = null; frame = null; job?.cancel()
+            loadedKey = key; document = null; timeline = null; frame = null; job?.cancel()
             job = scope.launch {
                 val result = withContext(Dispatchers.IO) {
                     runCatching {
                         val track = store.load().tracks.find { it.id == id }
                         val file = track?.subtitles?.find { it.uri == selected } ?: track?.subtitles?.firstOrNull()
                         file?.let { store.readSubtitle(it, duration.takeIf { value -> value > 0 }) }
-                    }.getOrNull()
+                    }.getOrNull()?.let { it to FloatingTimeline(it) }
                 }
-                if (loadedKey == key) document = result
+                if (loadedKey == key) { document = result?.first; timeline = result?.second }
             }
         }
         val dark = when (store.setting("theme", "system")) {
@@ -129,6 +130,11 @@ class FloatingLyrics(private val context: Context, private val player: Player) {
         val styleChanged = nextStyle != styleKey
         if (styleChanged) {
             styleKey = nextStyle
+            // Fixed for the chosen font size, independent of text length and cue gaps.
+            params.height = px(48) + rowHeight * 3
+            viewport?.layoutParams = viewport?.layoutParams?.apply { height = rowHeight * 3 }
+            window?.let { row -> runCatching { manager.updateViewLayout(row, params) }.onFailure { disable() } }
+
             window?.background = if (transparent) null else GradientDrawable().apply {
                 setColor(if (dark) Color.argb(235, 28, 41, 35) else Color.argb(245, 240, 245, 240)); cornerRadius = px(16).toFloat()
             }
@@ -145,7 +151,7 @@ class FloatingLyrics(private val context: Context, private val player: Player) {
             id == null -> FloatingFrame(-1, "", "请选择音频", "")
             document == null -> FloatingFrame(-1, "", "暂无字幕", "")
             document?.timed != true -> FloatingFrame(-1, "", "此字幕没有时间轴", "")
-            else -> FloatingFrames.at(document!!, position)
+            else -> timeline?.at(position) ?: FloatingFrame(-1, "", "", "")
         }
         if (next != frame || styleChanged) {
             val old = frame
@@ -166,12 +172,12 @@ class FloatingLyrics(private val context: Context, private val player: Player) {
         rows.forEachIndexed { index, text ->
             val isCurrent = index == (if (old == null) 1 else 2)
             val label = TextView(context).apply {
-                this.text = text; gravity = Gravity.CENTER_VERTICAL; maxLines = 3
+                this.text = text; gravity = Gravity.CENTER_VERTICAL; maxLines = 2
                 ellipsize = TextUtils.TruncateAt.END; includeFontPadding = false
                 setPadding(px(4), px(3), px(4), px(3))
                 setTypeface(null, if (isCurrent) Typeface.BOLD else Typeface.NORMAL)
                 setTextColor(if (transparent || dark) Color.WHITE else Color.rgb(24, 35, 28))
-                alpha = if (isCurrent) 1f else 0.55f
+                alpha = if (isCurrent) { if(next.active) 1f else 0.75f } else 0.55f
                 if (transparent) setShadowLayer(dp * 5, 0f, dp, Color.BLACK)
                 TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(this, 12, store.fontSize().toInt().coerceAtLeast(12), 1, android.util.TypedValue.COMPLEX_UNIT_SP)
             }
@@ -188,7 +194,7 @@ class FloatingLyrics(private val context: Context, private val player: Player) {
         enabled = false; job?.cancel(); strip?.animate()?.cancel()
         window?.let { runCatching { manager.removeView(it) } }
         window = null; viewport = null; strip = null; lockButton = null; closeButton = null
-        document = null; frame = null; PlaybackService.overlayVisible.value = false
+        document = null; timeline = null; frame = null; PlaybackService.overlayVisible.value = false
     }
     fun destroy() { disable(); scope.cancel() }
 }
