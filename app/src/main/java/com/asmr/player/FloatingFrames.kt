@@ -40,3 +40,16 @@ object FloatingText {
         else -> c in '\u3000'..'\u303F' || c in '\uFF01'..'\uFF0F' || c in '\uFF1A'..'\uFF20' || c in '\uFF3B'..'\uFF40'
     }
 }
+
+object FloatingPalette {
+    val choices = linkedMapOf("auto" to "自动", "white" to "白色", "black" to "黑色", "yellow" to "米黄", "green" to "浅绿", "blue" to "浅蓝", "pink" to "粉色")
+    fun color(choice: String, dark: Boolean): Int = when(choice) {
+        "white" -> 0xFFFFFFFF.toInt()
+        "black" -> 0xFF000000.toInt()
+        "yellow" -> 0xFFFFE6A3.toInt()
+        "green" -> 0xFFB9E8C5.toInt()
+        "blue" -> 0xFFB7D9FF.toInt()
+        "pink" -> 0xFFFFC4DE.toInt()
+        else -> if(dark) 0xFFFFFFFF.toInt() else 0xFF18231C.toInt()
+    }
+}

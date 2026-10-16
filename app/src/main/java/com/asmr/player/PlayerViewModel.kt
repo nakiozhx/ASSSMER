@@ -48,6 +48,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             "oldest" -> a.modified.compareTo(b.modified).takeIf { it != 0 } ?: name; else -> name }
     }
     fun parentUri(): Uri? = currentTrack?.let(store::parent)
+    var overlayColor by mutableStateOf(store.setting("overlayColor", "auto")); private set
+    fun overlayColor(value: String) { if(value in FloatingPalette.choices) { overlayColor=value;store.setSetting("overlayColor",value) } }
     fun overlayLocked(value: Boolean) { store.setSetting("overlayLocked",value.toString());PlaybackService.overlayLocked.value=value }
     fun overlayTransparent(value: Boolean) { store.setSetting("overlayTransparent",value.toString());PlaybackService.overlayTransparent.value=value }
     fun overlay(enabled: Boolean) { controller?.sendCustomCommand(SessionCommand(PlaybackService.OVERLAY_COMMAND, Bundle.EMPTY), Bundle().apply { putBoolean("enabled", enabled) }) }

@@ -56,4 +56,13 @@ class FloatingFramesTest {
         assertEquals(FloatingFrame(1,"A","B","C"),FloatingFrames.at(source,3500))
         assertEquals(4,source.cues.size)
     }
+    @Test fun floatingColorsHaveAutomaticFallbackAndPersistentChoiceKeys() {
+        assertEquals(0xFFFFFFFF.toInt(),FloatingPalette.color("auto",true))
+        assertEquals(0xFF18231C.toInt(),FloatingPalette.color("auto",false))
+        assertEquals(FloatingPalette.color("auto",false),FloatingPalette.color("unknown",false))
+        FloatingPalette.choices.keys.filter {it!="auto"}.forEach {
+            assertEquals(FloatingPalette.color(it,true),FloatingPalette.color(it,false))
+            assertEquals(255,FloatingPalette.color(it,true).ushr(24))
+        }
+    }
 }

@@ -521,7 +521,7 @@ private fun SettingsScreen(vm: PlayerViewModel, onImport: () -> Unit) {
         Text("阅读",color=Green,fontSize=13.sp)
         Text("字幕字号：${vm.fontSize.toInt()}",modifier=Modifier.padding(top=12.dp),fontSize=14.sp)
         Slider(value=vm.fontSize,onValueChange={vm.font(it)},valueRange=14f..32f,steps=17)
-        Spacer(Modifier.height(22.dp));Text("ASSSMER  /  0.3.2",color=Muted,fontSize=11.sp)
+        Spacer(Modifier.height(22.dp));Text("ASSSMER  /  0.3.3",color=Muted,fontSize=11.sp)
     }
     remove?.let { root -> AlertDialog(onDismissRequest={remove=null},title={Text("移除音频目录？")},text={Text("只移除音频库中的记录，原音频和字幕文件会保留。")},
         confirmButton={TextButton(onClick={vm.removeRoot(root);remove=null}){Text("移除")}},dismissButton={TextButton(onClick={remove=null}){Text("取消")}}) }
@@ -553,13 +553,29 @@ private fun OverlaySetting(vm: PlayerViewModel) {
     val locked by PlaybackService.overlayLocked.collectAsState()
     val transparent by PlaybackService.overlayTransparent.collectAsState()
     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
-        Text("锁定位置",modifier=Modifier.weight(1f),fontSize=14.sp)
+        Column(Modifier.weight(1f)) {
+            Text("锁定并穿透触摸",fontSize=14.sp)
+            Text("锁定后可操作下方应用；在此解锁",color=Muted,fontSize=11.sp)
+        }
         Switch(checked=locked,onCheckedChange={vm.overlayLocked(it)})
     }
     Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
         Text("透明背景",modifier=Modifier.weight(1f),fontSize=14.sp)
         Switch(checked=transparent,onCheckedChange={vm.overlayTransparent(it)})
     }
+    var colorMenu by remember {mutableStateOf(false)}
+    Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically) {
+        Text("字幕颜色",modifier=Modifier.weight(1f),fontSize=14.sp)
+        Box {
+            TextButton(onClick={colorMenu=true}) {Text((FloatingPalette.choices[vm.overlayColor] ?: "自动")+" ▾")}
+            DropdownMenu(expanded=colorMenu,onDismissRequest={colorMenu=false}) {
+                FloatingPalette.choices.forEach { (key,label) ->
+                    DropdownMenuItem(text={Text(label)},onClick={vm.overlayColor(key);colorMenu=false})
+                }
+            }
+        }
+    }
+
     }
 
 }

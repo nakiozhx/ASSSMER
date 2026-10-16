@@ -30,6 +30,7 @@ class FloatingLyrics(private val context: Context, private val player: Player) {
     private var strip: LinearLayout? = null
     private var lockButton: TextView? = null
     private var closeButton: TextView? = null
+    private var controls: LinearLayout? = null
     private var document: SubtitleDocument? = null
     private var timeline: FloatingTimeline? = null
     private var loadedKey = ""
@@ -39,9 +40,11 @@ class FloatingLyrics(private val context: Context, private val player: Player) {
     private var lastPosition = -1L
     private val dp = context.resources.displayMetrics.density
     private fun px(value: Int) = (value * dp).toInt()
-    private val rowHeight get() = px((store.fontSize() * 2.5f + 8).toInt().coerceIn(42, 88))
+    private val previewHeight get() = px((store.fontSize() * 1.55f + 4).toInt().coerceAtLeast(26))
+    private val currentHeight get() = px(((store.fontSize() + 4) * 2.15f + 4).toInt())
+    private val textHeight get() = previewHeight * 2 + currentHeight
     private val params = WindowManager.LayoutParams(
-        minOf(px(360), context.resources.displayMetrics.widthPixels - px(24)), px(48) + rowHeight * 3,
+        minOf(px(360), context.resources.displayMetrics.widthPixels - px(24)), px(48) + textHeight,
         WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
         WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
         PixelFormat.TRANSLUCENT
@@ -60,7 +63,8 @@ class FloatingLyrics(private val context: Context, private val player: Player) {
             setPadding(px(12), 0, px(12), px(8))
             clipChildren = true
         }
-        val controls = LinearLayout(context).apply { gravity = Gravity.END or Gravity.CENTER_VERTICAL }
+        val bar = LinearLayout(context).apply { gravity = Gravity.END or Gravity.CENTER_VERTICAL }
+        controls = bar
         lockButton = TextView(context).apply {
             textSize = 12f; gravity = Gravity.CENTER
             setOnClickListener {
@@ -70,15 +74,15 @@ class FloatingLyrics(private val context: Context, private val player: Player) {
                 update()
             }
         }
-        controls.addView(lockButton, LinearLayout.LayoutParams(px(70), px(40)))
+        bar.addView(lockButton, LinearLayout.LayoutParams(px(70), px(40)))
         closeButton = TextView(context).apply {
             text = "×"; textSize = 24f; gravity = Gravity.CENTER; contentDescription = "关闭悬浮字幕"
             setOnClickListener { disable() }
         }
-        controls.addView(closeButton, LinearLayout.LayoutParams(px(44), px(40)))
-        row.addView(controls, LinearLayout.LayoutParams(-1, px(40)))
+        bar.addView(closeButton, LinearLayout.LayoutParams(px(44), px(40)))
+        row.addView(bar, LinearLayout.LayoutParams(-1, px(40)))
         viewport = FrameLayout(context).apply { clipChildren = true; clipToPadding = true }
-        row.addView(viewport, LinearLayout.LayoutParams(-1, rowHeight * 3))
+        row.addView(viewport, LinearLayout.LayoutParams(-1, textHeight))
         var startX = 0f; var startY = 0f; var originX = 0; var originY = 0
         val drag = View.OnTouchListener { view, event ->
             if (PlaybackService.overlayLocked.value) return@OnTouchListener false
@@ -126,19 +130,26 @@ class FloatingLyrics(private val context: Context, private val player: Player) {
         }
         val transparent = PlaybackService.overlayTransparent.value
         val locked = PlaybackService.overlayLocked.value
-        val nextStyle = "$dark|$transparent|$locked|${store.fontSize()}"
+        val colorChoice = store.setting("overlayColor", "auto")
+        val nextStyle = "$dark|$transparent|$locked|${store.fontSize()}|$colorChoice"
         val styleChanged = nextStyle != styleKey
         if (styleChanged) {
             styleKey = nextStyle
             // Fixed for the chosen font size, independent of text length and cue gaps.
-            params.height = px(48) + rowHeight * 3
-            viewport?.layoutParams = viewport?.layoutParams?.apply { height = rowHeight * 3 }
+            params.flags = if(locked) params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                else params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+            // Android 12+ requires an untrusted pass-through overlay to stay below
+            // the system obscuring-opacity threshold when touching another app.
+            params.alpha = if(locked) 0.75f else 1f
+            controls?.visibility = if(locked) View.GONE else View.VISIBLE
+            params.height = px(if(locked) 8 else 48) + textHeight
+            viewport?.layoutParams = viewport?.layoutParams?.apply { height = textHeight }
             window?.let { row -> runCatching { manager.updateViewLayout(row, params) }.onFailure { disable() } }
 
             window?.background = if (transparent) null else GradientDrawable().apply {
                 setColor(if (dark) Color.argb(235, 28, 41, 35) else Color.argb(245, 240, 245, 240)); cornerRadius = px(16).toFloat()
             }
-            val color = if (transparent || dark) Color.WHITE else Color.rgb(24, 35, 28)
+            val color = FloatingPalette.color(colorChoice, transparent || dark)
             listOfNotNull(lockButton, closeButton).forEach {
                 it.setTextColor(color)
                 it.setShadowLayer(if (transparent) 5f * dp else 0f, 0f, dp, Color.BLACK)
@@ -165,35 +176,43 @@ class FloatingLyrics(private val context: Context, private val player: Player) {
 
     private fun render(next: FloatingFrame, old: FloatingFrame?, dark: Boolean, transparent: Boolean) {
         val host = viewport ?: return
-        strip?.animate()?.cancel(); host.removeAllViews()
+        val outgoing = strip
+        for(i in 0 until host.childCount) host.getChildAt(i).animate().cancel()
+        host.removeAllViews()
         val content = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
-        val rows = if (old == null) listOf(next.previous, next.current, next.next)
-            else listOf(old.previous, old.current, next.current, next.next)
+        val rows = listOf(next.previous, next.current, next.next)
         rows.forEachIndexed { index, text ->
-            val isCurrent = index == (if (old == null) 1 else 2)
+            val isCurrent = index == 1
             val label = TextView(context).apply {
                 this.text = text; gravity = Gravity.CENTER_VERTICAL; maxLines = 2
                 ellipsize = TextUtils.TruncateAt.END; includeFontPadding = false
-                setPadding(px(4), px(3), px(4), px(3))
+                setPadding(px(4), px(1), px(4), px(1))
+                setLineSpacing(0f, 0.95f)
                 setTypeface(null, if (isCurrent) Typeface.BOLD else Typeface.NORMAL)
-                setTextColor(if (transparent || dark) Color.WHITE else Color.rgb(24, 35, 28))
+                setTextColor(FloatingPalette.color(store.setting("overlayColor", "auto"), transparent || dark))
                 alpha = if (isCurrent) { if(next.active) 1f else 0.75f } else 0.55f
-                if (transparent) setShadowLayer(dp * 5, 0f, dp, Color.BLACK)
-                TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(this, 12, store.fontSize().toInt().coerceAtLeast(12), 1, android.util.TypedValue.COMPLEX_UNIT_SP)
+                setShadowLayer(dp * 2, 0f, dp * 0.5f, if(currentTextColor == Color.BLACK) Color.WHITE else Color.BLACK)
+                TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(this, 12, (store.fontSize().toInt() + if(isCurrent) 4 else 0).coerceAtLeast(12), 1, android.util.TypedValue.COMPLEX_UNIT_SP)
             }
-            content.addView(label, LinearLayout.LayoutParams(-1, rowHeight))
+            content.addView(label, LinearLayout.LayoutParams(-1, if(isCurrent) currentHeight else previewHeight))
         }
-        host.addView(content, FrameLayout.LayoutParams(-1, rows.size * rowHeight)); strip = content
-        if (old != null) content.animate().translationY(-rowHeight.toFloat()).setDuration(320)
-            .setInterpolator(DecelerateInterpolator()).withEndAction {
-                if (strip === content) render(next, null, dark, transparent)
-            }.start()
+        if(old != null && outgoing != null) host.addView(outgoing, FrameLayout.LayoutParams(-1, textHeight))
+        host.addView(content, FrameLayout.LayoutParams(-1, textHeight)); strip = content
+        if (old != null && outgoing != null) {
+            val distance = (previewHeight + currentHeight) / 2f
+            content.translationY = distance; content.alpha = 0f
+            outgoing.animate().translationY(-distance).alpha(0f).setDuration(280).start()
+            content.animate().translationY(0f).alpha(1f).setDuration(280)
+                .setInterpolator(DecelerateInterpolator()).withEndAction {
+                    if (strip === content) host.removeView(outgoing)
+                }.start()
+        }
     }
 
     private fun disable() {
         enabled = false; job?.cancel(); strip?.animate()?.cancel()
         window?.let { runCatching { manager.removeView(it) } }
-        window = null; viewport = null; strip = null; lockButton = null; closeButton = null
+        window = null; viewport = null; strip = null; lockButton = null; closeButton = null; controls = null
         document = null; timeline = null; frame = null; PlaybackService.overlayVisible.value = false
     }
     fun destroy() { disable(); scope.cancel() }

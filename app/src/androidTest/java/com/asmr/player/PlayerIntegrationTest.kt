@@ -166,6 +166,7 @@ class PlayerIntegrationTest {
     fun i_floatingLyricsHasFixedSizeLockAndTransparentBackground() {
         val store=LibraryStore(context)
         val originalFont=store.fontSize()
+        val originalColor=store.setting("overlayColor","auto")
         store.setFontSize(14f)
         val locked=store.setting("overlayLocked","false")
         val transparent=store.setting("overlayTransparent","false")
@@ -191,6 +192,17 @@ class PlayerIntegrationTest {
             var width=0;var height=0
             main {width=root()!!.width;height=root()!!.height;assertTrue(width>0 && height>0)
                 assertTrue("Small text must use a compact frame",height < context.resources.displayMetrics.density*200)}
+            await {
+                val host=(root() as android.widget.LinearLayout).getChildAt(1) as android.widget.FrameLayout
+                val labels=host.getChildAt(0) as android.widget.LinearLayout
+                (labels.getChildAt(1) as android.widget.TextView).textSize > (labels.getChildAt(0) as android.widget.TextView).textSize
+            }
+            main {
+                store.setSetting("overlayColor","yellow");overlay!!.update()
+                val host=(root() as android.widget.LinearLayout).getChildAt(1) as android.widget.FrameLayout
+                val labels=host.getChildAt(0) as android.widget.LinearLayout
+                assertEquals(FloatingPalette.color("yellow",true),(labels.getChildAt(1) as android.widget.TextView).currentTextColor)
+            }
             main {controller.seekTo(2850);overlay!!.update();controller.play()}
             await {
                 overlay!!.update()
@@ -215,12 +227,20 @@ class PlayerIntegrationTest {
             }
             var before=0
             main {PlaybackService.overlayLocked.value=true;overlay!!.update();before=(root()!!.layoutParams as android.view.WindowManager.LayoutParams).y;drag()
-                assertEquals(before,(root()!!.layoutParams as android.view.WindowManager.LayoutParams).y)}
+                assertEquals(before,(root()!!.layoutParams as android.view.WindowManager.LayoutParams).y)
+                val params=root()!!.layoutParams as android.view.WindowManager.LayoutParams
+                assertTrue(params.flags and android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE != 0)
+                assertTrue(params.alpha <= 0.8f)
+                assertEquals(android.view.View.GONE,(root() as android.widget.LinearLayout).getChildAt(0).visibility)
+            }
             main {PlaybackService.overlayLocked.value=false;overlay!!.update();drag()
-                assertTrue((root()!!.layoutParams as android.view.WindowManager.LayoutParams).y>before)}
+                assertTrue((root()!!.layoutParams as android.view.WindowManager.LayoutParams).y>before)
+                assertEquals(0,(root()!!.layoutParams as android.view.WindowManager.LayoutParams).flags and android.view.WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE)
+            }
         } finally {
             main {overlay?.destroy()}
             store.setFontSize(originalFont)
+            store.setSetting("overlayColor",originalColor)
             store.setSetting("overlayLocked",locked);store.setSetting("overlayTransparent",transparent)
             PlaybackService.overlayLocked.value=locked.toBoolean();PlaybackService.overlayTransparent.value=transparent.toBoolean()
         }
